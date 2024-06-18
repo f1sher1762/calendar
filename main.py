@@ -129,7 +129,7 @@ def show_all_software(update, context):
             product_name = row['Имя продукта']
             expiry_date = row['Дата окончания']
             days_left = (expiry_date - today).days
-            message = f'{product_name} истекает {expiry_date.strftime("%d.%м.%Y")} ({days_left} дней осталось)'
+            message = f'{product_name} истекает {expiry_date.strftime("%d.%m.%Y")} ({days_left} дней осталось)'
             try:
                 bot.send_message(chat_id=CHAT_ID, text=message, timeout=120)
             except telegram.error.TimedOut:
@@ -153,7 +153,7 @@ def check_expiry(context: CallbackContext):
 
         days_left = (expiry_date - today).days
 
-        if days_left <= 40 and expiry_date not in notified_dates:
+        if days_left <= 56 and expiry_date not in notified_dates:
             message = f'Уведомление: {product_name} истекает через {days_left} дней ({expiry_date.strftime("%d.%m.%Y")})'
             try:
                 bot.send_message(chat_id=CHAT_ID, text=message, timeout=120)
