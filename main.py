@@ -11,12 +11,12 @@ TOKEN = '6865466938:AAFKS2iOI3w3JtJ-sLUo11n58kT-SGEr8GI'
 CHAT_ID = '-4157087994'
 ALLOWED_USERS = [376492213]  # Замените на реальные идентификаторы пользователей
 
-
 # Создаем объект бота
 bot = Bot(token=TOKEN)
 
-# Чтение Excel файла
+# Чтение Excel файла и конвертация даты
 df = pd.read_excel('software_expiry_dates.xlsx')
+df['Дата окончания'] = pd.to_datetime(df['Дата окончания'], format='%d.%m.%Y', errors='coerce')
 
 # Текущая дата
 today = datetime.datetime.today()
@@ -56,6 +56,7 @@ def add_software(update, context):
             new_row = pd.DataFrame([[product_name.strip(), expiry_date]], columns=['Имя продукта', 'Дата окончания'])
             global df
             df = pd.concat([df, new_row], ignore_index=True)
+            df['Дата окончания'] = pd.to_datetime(df['Дата окончания'])
             df.to_excel('software_expiry_dates.xlsx', index=False)
             update.message.reply_text(f"Запись '{product_name.strip()}' с датой окончания {expiry_date_str.strip()} добавлена.")
             context.user_data['expecting'] = None
@@ -99,6 +100,9 @@ def check_expiring_software(update, context, month_offset=0):
     month_start = datetime.datetime(now.year, now.month + month_offset, 1)
     next_month_start = datetime.datetime(now.year, now.month + month_offset + 1, 1)
 
+    # Ensure date conversion for comparison
+    df['Дата окончания'] = pd.to_datetime(df['Дата окончания'], errors='coerce')
+
     expiring_software = df[(df['Дата окончания'] >= month_start) & (df['Дата окончания'] < next_month_start)]
 
     if expiring_software.empty:
@@ -120,6 +124,7 @@ def check_expiring_software(update, context, month_offset=0):
 
 @restricted
 def show_all_software(update, context):
+    df['Дата окончания'] = pd.to_datetime(df['Дата окончания'], errors='coerce')
     expiring_software = df[df['Дата окончания'].dt.year == today.year]
 
     if expiring_software.empty:
@@ -129,7 +134,7 @@ def show_all_software(update, context):
             product_name = row['Имя продукта']
             expiry_date = row['Дата окончания']
             days_left = (expiry_date - today).days
-            message = f'{product_name} истекает {expiry_date.strftime("%d.%m.%Y")} ({days_left} дней осталось)'
+            message = f'{product_name} истекает {expiry_date.strftime("%d.%м.%Y")} ({days_left} дней осталось)'
             try:
                 bot.send_message(chat_id=CHAT_ID, text=message, timeout=120)
             except telegram.error.TimedOut:
@@ -178,21 +183,22 @@ def save_notified_dates(dates):
         for date in dates:
             f.write(date.strftime('%Y-%m-%d') + '\n')
 
-# Настройка команд и кнопок
-updater = Updater(TOKEN, use_context=True)
-dispatcher = updater.dispatcher
-dispatcher.add_handler(CommandHandler('soft_this_month', lambda update, context: check_expiring_software(update, context, month_offset=0)))
-dispatcher.add_handler(CommandHandler('soft_next_month', lambda update, context: check_expiring_software(update, context, month_offset=1)))
-dispatcher.add_handler(CommandHandler('all_software', show_all_software))
-dispatcher.add_handler(CommandHandler('add_software', add_software_start))
-dispatcher.add_handler(CommandHandler('delete_software', delete_software_start))
-dispatcher.add_handler(CallbackQueryHandler(button))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, add_software))
+def main():
+    updater = Updater(token=TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-# Настройка JobQueue для ежедневной проверки
-job_queue = updater.job_queue
-job_queue.run_daily(check_expiry, time=datetime.time(hour=9, minute=0, second=0))
+    dp.add_handler(CommandHandler('add_software', add_software_start))
+    dp.add_handler(CommandHandler('delete_software', delete_software_start))
+    dp.add_handler(CommandHandler('check_expiry', check_expiry))
+    dp.add_handler(CallbackQueryHandler(button))
 
-# Запуск бота
-updater.start_polling()
-updater.idle()
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, add_software))
+
+    job_queue = updater.job_queue
+    job_queue.run_repeating(check_expiry, interval=86400, first=0)
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
