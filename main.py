@@ -3,13 +3,13 @@ import datetime
 import logging
 import time
 import os
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext, JobQueue
 
 # Настройки Telegram бота
 TOKEN = '6865466938:AAFKS2iOI3w3JtJ-sLUo11n58kT-SGEr8GI'
-CHAT_ID = '-698861002'
-ALLOWED_USERS = [376492213,250362710]  # Замените на реальные идентификаторы пользователей
+CHAT_ID = '-4157087994'
+ALLOWED_USERS = [376492213, 250362710]  # Замените на реальные идентификаторы пользователей
 
 
 # Создаем объект бота
@@ -20,14 +20,18 @@ df = pd.read_excel('software_expiry_dates.xlsx')
 
 # Текущая дата
 today = datetime.datetime.today()
+
 # Настройка логгирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 # Файл для хранения дат отправленных уведомлений
 notified_dates_file = 'notified_dates.txt'
+
 def is_user_allowed(update):
     user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
     return user_id in ALLOWED_USERS
+
 def restricted(func):
     def wrapped(update, context, *args, **kwargs):
         if not is_user_allowed(update):
@@ -35,11 +39,13 @@ def restricted(func):
             return
         return func(update, context, *args, **kwargs)
     return wrapped
-def log_message(user_id):
-    pass
+
+@restricted
 def add_software_start(update, context):
     update.message.reply_text("Введите данные в формате: 'Имя продукта, Дата окончания (ДД.ММ.ГГГГ)'")
     context.user_data['expecting'] = 'add_software'
+
+@restricted
 def add_software(update, context):
     if 'expecting' in context.user_data and context.user_data['expecting'] == 'add_software':
         try:
@@ -54,11 +60,14 @@ def add_software(update, context):
             context.user_data['expecting'] = None
         except Exception as e:
             update.message.reply_text("Произошла ошибка при добавлении записи. Убедитесь, что формат данных правильный.")
-    elif 'expecting' in context.user_data and context.user_data['expecting'] == 'delete_software':
-        delete_software(update, context)
+            logger.error(f"Ошибка при добавлении записи: {e}")
+
+@restricted
 def delete_software_start(update, context):
     update.message.reply_text("Введите имя продукта, который нужно удалить:")
     context.user_data['expecting'] = 'delete_software'
+
+@restricted
 def delete_software(update, context):
     if 'expecting' in context.user_data and context.user_data['expecting'] == 'delete_software':
         product_name = update.message.text.strip()
@@ -71,6 +80,7 @@ def delete_software(update, context):
         else:
             update.message.reply_text(f"Запись '{product_name}' не найдена.")
             context.user_data['expecting'] = None
+
 @restricted
 def button(update, context):
     query = update.callback_query
@@ -81,6 +91,7 @@ def button(update, context):
         check_expiring_software(query, context, month_offset=1)
     elif query.data == 'all_software':
         show_all_software(query, context)
+
 @restricted
 def check_expiring_software(update, context, month_offset=0):
     now = datetime.datetime.now()
@@ -126,6 +137,7 @@ def show_all_software(update, context):
                 bot.send_message(chat_id=CHAT_ID, text=message, timeout=30)
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения: {e}")
+
 def check_expiry(context: CallbackContext):
     global today
     today = datetime.datetime.today()
@@ -148,32 +160,48 @@ def check_expiry(context: CallbackContext):
                 bot.send_message(chat_id=CHAT_ID, text=message, timeout=30)
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения: {e}")
+
 def load_notified_dates():
     if os.path.exists(notified_dates_file):
         with open(notified_dates_file, 'r') as f:
             dates = f.read().splitlines()
             return [datetime.datetime.strptime(date, '%Y-%m-%d') for date in dates]
     return []
+
 def save_notified_dates(dates):
     with open(notified_dates_file, 'w') as f:
         for date in dates:
             f.write(date.strftime('%Y-%m-%d') + '\n')
 
+def start(update, context):
+    keyboard = [
+        [
+            InlineKeyboardButton("Софты, истекающие в этом месяце", callback_data='this_month'),
+            InlineKeyboardButton("Софты, истекающие в следующем месяце", callback_data='next_month'),
+        ],
+        [InlineKeyboardButton("Все софты, истекающие в этом году", callback_data='all_software')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
+
 # Настройка команд и кнопок
-updater = Updater(TOKEN, use_context=True)
-dispatcher = updater.dispatcher
-dispatcher.add_handler(CommandHandler('soft_this_month', lambda update, context: check_expiring_software(update, context, month_offset=0)))
-dispatcher.add_handler(CommandHandler('soft_next_month', lambda update, context: check_expiring_software(update, context, month_offset=1)))
-dispatcher.add_handler(CommandHandler('all_software', show_all_software))
-dispatcher.add_handler(CommandHandler('add_software', add_software_start))
-dispatcher.add_handler(CommandHandler('delete_software', delete_software_start))
-dispatcher.add_handler(CallbackQueryHandler(button))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, add_software))
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('soft_this_month', lambda update, context: check_expiring_software(update, context, month_offset=0)))
+    dispatcher.add_handler(CommandHandler('soft_next_month', lambda update, context: check_expiring_software(update, context, month_offset=1)))
+    dispatcher.add_handler(CommandHandler('all_software', show_all_software))
+    dispatcher.add_handler(CommandHandler('add_software', add_software_start))
+    dispatcher.add_handler(CommandHandler('delete_software', delete_software_start))
+    dispatcher.add_handler(CallbackQueryHandler(button))
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, add_software))
 
-# Настройка JobQueue для ежедневной проверки
-job_queue = updater.job_queue
-job_queue.run_daily(check_expiry, time=datetime.time(hour=9, minute=0, second=0))
+    job_queue = updater.job_queue
+    job_queue.run_daily(check_expiry, time=datetime.time(hour=9, minute=0, second=0))
 
-# Запуск бота
-updater.start_polling()
-updater.idle()
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
