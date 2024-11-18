@@ -7,15 +7,15 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext, JobQueue
 
 # Настройки Telegram бота
-TOKEN = '6865466938:AAFKS2iOI3w3JtJ-sLUo11n58kT-SGEr8GI'
-CHAT_ID = '-4157087994'
-ALLOWED_USERS = [376492213, 250362710]  # Замените на реальные идентификаторы пользователей
+TOKEN = 'свой токе'
+CHAT_ID = '-айди чата'
+ALLOWED_USERS = [айди разрешенных юзеров]  # 
 
 
-# Создаем объект бота
+# Создаем объект ботика
 bot = Bot(token=TOKEN)
 
-# Чтение Excel файла
+# Чтение Excel файла(нужно будет создать файл software_expiry_dates и залить в проект)
 df = pd.read_excel('software_expiry_dates.xlsx')
 
 # Текущая дата
